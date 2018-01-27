@@ -27,6 +27,7 @@
   AVCaptureDeviceInput *_frontCameraInput;
   AVCaptureDeviceInput *_backCameraInput;
   AVCaptureVideoDataOutput *_videoDataOutput;
+  AVCaptureDepthDataOutput *_depthDataOutput;
   // The cricket::VideoCapturer that owns this class. Should never be NULL.
   webrtc::AVFoundationVideoCapturer *_capturer;
   BOOL _hasRetriedOnFatalError;
@@ -186,7 +187,12 @@
   [RTCDispatcher
       dispatchAsyncOnType:RTCDispatcherTypeCaptureSession
                     block:^{
-                        [_videoDataOutput setSampleBufferDelegate:nil queue:nullptr];
+                        if (_videoDataOutput) {
+                          [_videoDataOutput setSampleBufferDelegate:nil queue:nullptr];
+                        }
+                        // if (_depthDataOutput) {
+                        //   [_depthDataOutput setDelegate:nil callbackQueue:nullptr];
+                        // }
                         [_captureSession stopRunning];
 #if TARGET_OS_IPHONE
                         [[UIDevice currentDevice] endGeneratingDeviceOrientationNotifications];
@@ -261,6 +267,58 @@
     didDropSampleBuffer:(CMSampleBufferRef)sampleBuffer
          fromConnection:(AVCaptureConnection *)connection {
   RTCLogError(@"Dropped sample buffer.");
+}
+
+#pragma mark AVCaptureDepthDataOutputDelegate
+
+- (void)depthDataOutput:(AVCaptureDepthDataOutput *)depthDataOutput
+     didOutputDepthData:(AVDepthData *)depthData
+              timestamp:(CMTime)timestamp
+             connection:(AVCaptureConnection *)connection {
+
+  NSParameterAssert(depthDataOutput == _depthDataOutput);
+  if (!self.hasStarted) {
+    return;
+  }
+
+  // Assume that rotation metadata, if any, will be tracked by non-depth capture
+  // where we can use AVCaptureSession devicePositionForSampleBuffer correctly
+  webrtc::VideoRotation rotation = webrtc::kVideoRotation_0;
+
+  OSStatus status;
+  CMFormatDescriptionRef desc = NULL;
+  status = CMVideoFormatDescriptionCreateForImageBuffer(NULL, depthData.depthDataMap, &desc);
+  if (status != noErr) {
+    RTCLogError(@"CMVideoFormatDescriptionCreateForImageBuffer failed to set: %d", status);
+  }
+
+  CMSampleTimingInfo timing;
+  timing.duration = kCMTimeInvalid;
+  timing.presentationTimeStamp = timestamp;
+  timing.decodeTimeStamp = kCMTimeInvalid;
+
+  // Convert our depthData into a SampleBuffer
+  CMSampleBufferRef sampleBuffer;
+  status = CMSampleBufferCreateReadyWithImageBuffer(
+    kCFAllocatorDefault,
+    depthData.depthDataMap,
+    desc,
+    &timing,
+    &sampleBuffer
+  );
+  if (status != noErr) {
+    RTCLogError(@"CMSampleBufferCreateReadyWithImageBuffer failed to set: %d", status);
+  }
+
+  _capturer->CaptureSampleBuffer(sampleBuffer, rotation);
+}
+
+- (void)depthDataOutput:(AVCaptureDepthDataOutput *)output
+       didDropDepthData:(AVDepthData *)depthData
+              timestamp:(CMTime)timestamp
+             connection:(AVCaptureConnection *)connection
+                 reason:(AVCaptureOutputDataDroppedReason)reason {
+  RTCLogError(@"Dropped depthData buffer.");
 }
 
 #pragma mark - AVCaptureSession notifications
@@ -380,13 +438,26 @@
 #if defined(WEBRTC_IOS)
   captureSession.usesApplicationAudioSession = NO;
 #endif
+
+/*
+  // XXX: for now, just capture depth.
+
   // Add the output.
-  AVCaptureVideoDataOutput *videoDataOutput = [self videoDataOutput];
+  AVCaptureVideoDataOutput *videoDataOutput = [self getVideoDataOutput];
   if (![captureSession canAddOutput:videoDataOutput]) {
     RTCLogError(@"Video data output unsupported.");
     return NO;
   }
   [captureSession addOutput:videoDataOutput];
+*/
+
+  // Add the depth output.
+  AVCaptureDepthDataOutput *depthDataOutput = [self getDepthDataOutput];
+  if (![captureSession canAddOutput:depthDataOutput]) {
+    RTCLogError(@"Depth data output unsupported.");
+    return NO;
+  }
+  [captureSession addOutput:depthDataOutput];
 
   // Get the front and back cameras. If there isn't a front camera
   // give up.
@@ -410,7 +481,7 @@
   return YES;
 }
 
-- (AVCaptureVideoDataOutput *)videoDataOutput {
+- (AVCaptureVideoDataOutput *)getVideoDataOutput {
   if (!_videoDataOutput) {
     // Make the capturer output NV12. Ideally we want I420 but that's not
     // currently supported on iPhone / iPad.
@@ -427,12 +498,44 @@
   return _videoDataOutput;
 }
 
+- (AVCaptureDepthDataOutput *)getDepthDataOutput {
+  if (!_depthDataOutput) {
+    AVCaptureDepthDataOutput *depthDataOutput = [[AVCaptureDepthDataOutput alloc] init];
+    // depthDataOutput.videoSettings = @{
+    //   (NSString *)
+    //   // TODO(denicija): Remove this color conversion and use the original capture format directly.
+    //   kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)
+    // };
+    depthDataOutput.alwaysDiscardsLateDepthData = NO;
+    depthDataOutput.filteringEnabled = YES;
+    [depthDataOutput setDelegate:self callbackQueue:self.frameQueue];
+    _depthDataOutput = depthDataOutput;
+  }
+  return _depthDataOutput;
+}
+
 - (AVCaptureDevice *)videoCaptureDeviceForPosition:(AVCaptureDevicePosition)position {
+ AVCaptureDevice *device;
+  device = [AVCaptureDevice defaultDeviceWithDeviceType: AVCaptureDeviceTypeBuiltInTrueDepthCamera
+                                              mediaType: AVMediaTypeDepthData
+                                               position: position];
+  if (device != nil) {
+    return device;
+  }
+  device = [AVCaptureDevice defaultDeviceWithDeviceType: AVCaptureDeviceTypeBuiltInDuoCamera
+                                              mediaType: AVMediaTypeDepthData
+                                               position: position];
+  if (device != nil) {
+    return device;
+  }
+
+/*  
   for (AVCaptureDevice *captureDevice in [AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo]) {
     if (captureDevice.position == position) {
       return captureDevice;
     }
   }
+*/  
   return nil;
 }
 

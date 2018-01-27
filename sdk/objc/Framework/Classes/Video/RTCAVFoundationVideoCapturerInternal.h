@@ -22,7 +22,7 @@ NS_ASSUME_NONNULL_BEGIN
 // The reason for this is because other webrtc objects own cricket::VideoCapturer, which is not
 // ref counted. To prevent bad behavior we do not expose this class directly.
 @interface RTCAVFoundationVideoCapturerInternal
-    : NSObject <AVCaptureVideoDataOutputSampleBufferDelegate>
+    : NSObject <AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureDepthDataOutputDelegate>
 
 @property(nonatomic, readonly) AVCaptureSession *captureSession;
 @property(nonatomic, readonly) dispatch_queue_t frameQueue;
