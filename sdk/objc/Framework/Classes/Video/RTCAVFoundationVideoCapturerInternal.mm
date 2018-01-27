@@ -271,6 +271,15 @@
 
 #pragma mark AVCaptureDepthDataOutputDelegate
 
+inline void rgb2yuv(uint8_t r, uint8_t g, uint8_t b, uint8_t * y, uint8_t * u, uint8_t * v) {
+  // now we convert to YUV...
+  // Using formulas from http://msdn.microsoft.com/en-us/library/ms893078
+  *y =      ((66 * r  + 129 * g + 25 * b  + 128) >> 8) + 16;
+  // N.B. this factors in a divide-by-4 to let you downsample chroma as you go...
+  *u = *u + ((112 * r - 94 * g  - 18 * b  + 128) >> 10) + 32;
+  *v = *v + ((-38 * r - 74 * g  + 112 * b + 128) >> 10) + 32;
+}
+
 - (void)depthDataOutput:(AVCaptureDepthDataOutput *)depthDataOutput
      didOutputDepthData:(AVDepthData *)depthData
               timestamp:(CMTime)timestamp
@@ -283,7 +292,7 @@
 
   // Assume that rotation metadata, if any, will be tracked by non-depth capture
   // where we can use AVCaptureSession devicePositionForSampleBuffer correctly
-  webrtc::VideoRotation rotation = webrtc::kVideoRotation_0;
+  webrtc::VideoRotation rotation = webrtc::kVideoRotation_90;
 
   OSStatus status;
   CMFormatDescriptionRef desc = NULL;
@@ -298,10 +307,87 @@
   timing.decodeTimeStamp = kCMTimeInvalid;
 
   // Convert our depthData into a SampleBuffer
+  CVImageBufferRef imageBuffer;
+  CMVideoDimensions dims = CMVideoFormatDescriptionGetDimensions(desc);
+
+  // FIXME: use a CVPixelBufferPool for efficiency
+  status = CVPixelBufferCreate(
+    kCFAllocatorDefault,
+    dims.width,
+    dims.height,
+    kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+    nil,
+    &imageBuffer
+  );
+  if (status != noErr) {
+    RTCLogError(@"CVPixelBufferCreate failed: %d", status);
+  }
+
+  // implement depth to RGB as per http://reality.cs.ucl.ac.uk/projects/depth-streaming/depth-streaming.pdf
+  // we also convert to 420p as that's what WebRTC insists on
+
+  status = CVPixelBufferLockBaseAddress(depthData.depthDataMap, 0);
+  if (status != noErr) {
+    RTCLogError(@"CVPixelBufferLockBaseAddress failed: %d", status);
+  }
+  status = CVPixelBufferLockBaseAddress(imageBuffer, 0);
+  if (status != noErr) {
+    RTCLogError(@"CVPixelBufferLockBaseAddress failed: %d", status);
+  }
+
+  // periodicity constants as per the paper (end of sec 3)
+  double np = 512.0;
+  double w = 65536.0;
+  double p = np / w;
+
+  uint16_t * src = (uint16_t *) CVPixelBufferGetBaseAddress(depthData.depthDataMap);
+  uint8_t * dstY = (uint8_t *) CVPixelBufferGetBaseAddressOfPlane(imageBuffer, 0);
+  uint8_t * dstC = (uint8_t *) CVPixelBufferGetBaseAddressOfPlane(imageBuffer, 1);
+  for (size_t y = 0; y < dims.height; y++) {
+    for (size_t x = 0; x < dims.width; x++) {
+      // the paper describes three colour components: L, Ha and Hb, which we map to BGR.
+      // L is low-res depth data; H is high-res.
+
+      // FIXME: turn this into a lookup table
+      double L = (*src + 0.5) / w;
+
+      double Ha = fmod(L / (p / 2.0), 2.0);
+      if (Ha > 1) Ha = 2 - Ha;
+
+      double Hb = fmod((L - (p / 4.0)) / (p / 2.0), 2.0);
+      if (Hb > 1) Hb = 2 - Hb;
+
+      rgb2yuv(Ha * 255, Hb * 255, L * 255, dstY, dstC, dstC + 1);
+
+      src++;
+      dstY++;
+      if (x & 1) {
+        dstC += 2; // only advance chroma every other X pixel
+      }
+    }
+    if (y & 1) { // only advance chroma every other Y pixel
+      dstC -= dims.width * 2;
+    }
+  }
+
+  status = CVPixelBufferUnlockBaseAddress(depthData.depthDataMap, 0);
+  if (status != noErr) {
+    RTCLogError(@"CVPixelBufferUnlockBaseAddress failed: %d", status);
+  }
+  status = CVPixelBufferUnlockBaseAddress(imageBuffer, 0);
+  if (status != noErr) {
+    RTCLogError(@"CVPixelBufferUnlockBaseAddress failed: %d", status);
+  }
+
+  status = CMVideoFormatDescriptionCreateForImageBuffer(NULL, imageBuffer, &desc);
+  if (status != noErr) {
+    RTCLogError(@"CMVideoFormatDescriptionCreateForImageBuffer failed to set: %d", status);
+  }
+
   CMSampleBufferRef sampleBuffer;
   status = CMSampleBufferCreateReadyWithImageBuffer(
     kCFAllocatorDefault,
-    depthData.depthDataMap,
+    imageBuffer,
     desc,
     &timing,
     &sampleBuffer
@@ -501,11 +587,6 @@
 - (AVCaptureDepthDataOutput *)getDepthDataOutput {
   if (!_depthDataOutput) {
     AVCaptureDepthDataOutput *depthDataOutput = [[AVCaptureDepthDataOutput alloc] init];
-    // depthDataOutput.videoSettings = @{
-    //   (NSString *)
-    //   // TODO(denicija): Remove this color conversion and use the original capture format directly.
-    //   kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)
-    // };
     depthDataOutput.alwaysDiscardsLateDepthData = NO;
     depthDataOutput.filteringEnabled = YES;
     [depthDataOutput setDelegate:self callbackQueue:self.frameQueue];
