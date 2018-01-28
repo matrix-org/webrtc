@@ -94,6 +94,11 @@ inline void rgb2yuv(uint8_t r, uint8_t g, uint8_t b, uint8_t * y, uint8_t * u, u
     double Hb = fmod((1.0 + L - (p / 4.0)) / (p / 2.0), 2.0);
     if (Hb > 1.0) Hb = 2.0 - Hb;
 
+    // double L in order to increase its dynamic range, as in practice the data
+    // we get from the truedepth camera seems to only be between 10K and 20K, rather
+    // than the 0K-65K range we're considering here...
+    L *= 2.0;
+
     rgb2yuv(Hb * 255, Ha * 255, L * 255, dstY, dstQuarterU, dstQuarterV);
 
     dstY++;
@@ -342,6 +347,8 @@ inline void rgb2yuv(uint8_t r, uint8_t g, uint8_t b, uint8_t * y, uint8_t * u, u
   webrtc::VideoRotation rotation = webrtc::kVideoRotation_90;
 
   // Convert our depthData from disparity into depth...
+  // unsigned int t = depthData.depthDataType;
+  // RTCLogInfo(@"depthDataType is %.*s", 4, (char *)&t);
   if (depthData.depthDataType != kCVPixelFormatType_DepthFloat16) {
     depthData = [depthData depthDataByConvertingToDepthDataType:kCVPixelFormatType_DepthFloat16];
   }
@@ -444,6 +451,9 @@ inline void rgb2yuv(uint8_t r, uint8_t g, uint8_t b, uint8_t * y, uint8_t * u, u
   }
 
   _capturer->CaptureSampleBuffer(sampleBuffer, rotation);
+
+  CFRelease(sampleBuffer);
+  CFRelease(imageBuffer);
 }
 
 - (void)depthDataOutput:(AVCaptureDepthDataOutput *)output
