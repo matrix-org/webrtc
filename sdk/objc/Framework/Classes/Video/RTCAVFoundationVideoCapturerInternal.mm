@@ -94,10 +94,11 @@ inline void rgb2yuv(uint8_t r, uint8_t g, uint8_t b, uint8_t * y, uint8_t * u, u
     double Hb = fmod((1.0 + L - (p / 4.0)) / (p / 2.0), 2.0);
     if (Hb > 1.0) Hb = 2.0 - Hb;
 
-    // double L in order to increase its dynamic range, as in practice the data
+    // rescale L in order to increase its dynamic range, as in practice the data
     // we get from the truedepth camera seems to only be between 10K and 20K, rather
     // than the 0K-65K range we're considering here...
-    L *= 2.0;
+    L *= 4.0;
+    L -= 0.3;
 
     rgb2yuv(Hb * 255, Ha * 255, L * 255, dstY, dstQuarterU, dstQuarterV);
 
