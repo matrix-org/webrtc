@@ -31,6 +31,9 @@ NS_ASSUME_NONNULL_BEGIN
 @property(atomic, assign) BOOL isRunning;  // Whether the capture session is running.
 @property(atomic, assign) BOOL hasStarted;  // Whether we have an unmatched start.
 
+// build the lookup table for depth->yuv
++ (void)initialize;
+
 // We keep a pointer back to AVFoundationVideoCapturer to make callbacks on it
 // when we receive frames. This is safe because this object should be owned by
 // it.

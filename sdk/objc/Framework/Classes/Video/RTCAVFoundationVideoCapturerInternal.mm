@@ -39,12 +39,68 @@
 #endif
 }
 
+// Static look-up tables to convert 16-bit depth into YUV
+namespace {
+    uint8_t depthToY[65536];
+    uint8_t depthToQuarterU[65536];
+    uint8_t depthToQuarterV[65536];
+}
+
 @synthesize captureSession = _captureSession;
 @synthesize frameQueue = _frameQueue;
 @synthesize useBackCamera = _useBackCamera;
 
 @synthesize isRunning = _isRunning;
 @synthesize hasStarted = _hasStarted;
+
+// converts 8-bit RGB components into 8-bit YUV.
+// Chrominance is added at quarter-amplitude to the existing UV values in order to
+// facilitate 4:2:0 downsampling.
+inline void rgb2yuv(uint8_t r, uint8_t g, uint8_t b, uint8_t * y, uint8_t * u, uint8_t * v) {
+  // Using formulas from http://msdn.microsoft.com/en-us/library/ms893078
+  *y =      ((66 * r  + 129 * g + 25  * b + 128) >> 8) + 16;
+  // N.B. this factors in a divide-by-4 to let you downsample chroma as you go...
+  *u = *u + ((-38 * r - 74  * g + 112 * b + 128) >> 10) + 32;
+  *v = *v + ((112 * r - 94  * g - 18  * b + 128) >> 10) + 32;
+}
+
++ (void) initialize {
+  // implement depth to RGB as per http://reality.cs.ucl.ac.uk/projects/depth-streaming/depth-streaming.pdf
+  // we also convert to 420p as that's what WebRTC insists on
+
+  // periodicity constants as per the paper (end of sec 3)
+  double np = 512.0;
+  double w = 65536.0;
+  double p = np / w;
+
+  uint8_t * dstY = depthToY;
+  uint8_t * dstQuarterU = depthToQuarterU;
+  uint8_t * dstQuarterV = depthToQuarterV;
+
+  // assuming truedepth camera is giving us IEEE 754-2008 half-precision 16-bit floats, this means
+  // that positives lie between 0.0 through 65504.0, which when cast to a uint16_t lie between 0 and 65403
+
+  // build our depth->YUV LUT
+  for (size_t d = 0; d < 65536; d++) {
+    // the paper describes three colour components: L, Ha and Hb, which we map to BGR.
+    // L is low-res depth data; H is high-res.
+
+    double L = (d + 0.5) / w;
+
+    double Ha = fmod(L / (p / 2.0), 2.0);
+    if (Ha > 1.0) Ha = 2.0 - Ha;
+
+    // we add 1.0 to avoid taking the modulus of a negative number
+    double Hb = fmod((1.0 + L - (p / 4.0)) / (p / 2.0), 2.0);
+    if (Hb > 1.0) Hb = 2.0 - Hb;
+
+    rgb2yuv(Hb * 255, Ha * 255, L * 255, dstY, dstQuarterU, dstQuarterV);
+
+    dstY++;
+    dstQuarterU++;
+    dstQuarterV++;
+  }
+}
 
 // This is called from the thread that creates the video source, which is likely
 // the main thread.
@@ -271,15 +327,6 @@
 
 #pragma mark AVCaptureDepthDataOutputDelegate
 
-inline void rgb2yuv(uint8_t r, uint8_t g, uint8_t b, uint8_t * y, uint8_t * u, uint8_t * v) {
-  // now we convert to YUV...
-  // Using formulas from http://msdn.microsoft.com/en-us/library/ms893078
-  *y =      ((66 * r  + 129 * g + 25 * b  + 128) >> 8) + 16;
-  // N.B. this factors in a divide-by-4 to let you downsample chroma as you go...
-  *u = *u + ((112 * r - 94 * g  - 18 * b  + 128) >> 10) + 32;
-  *v = *v + ((-38 * r - 74 * g  + 112 * b + 128) >> 10) + 32;
-}
-
 - (void)depthDataOutput:(AVCaptureDepthDataOutput *)depthDataOutput
      didOutputDepthData:(AVDepthData *)depthData
               timestamp:(CMTime)timestamp
@@ -294,6 +341,11 @@ inline void rgb2yuv(uint8_t r, uint8_t g, uint8_t b, uint8_t * y, uint8_t * u, u
   // where we can use AVCaptureSession devicePositionForSampleBuffer correctly
   webrtc::VideoRotation rotation = webrtc::kVideoRotation_90;
 
+  // Convert our depthData from disparity into depth...
+  if (depthData.depthDataType != kCVPixelFormatType_DepthFloat16) {
+    depthData = [depthData depthDataByConvertingToDepthDataType:kCVPixelFormatType_DepthFloat16];
+  }
+
   OSStatus status;
   CMFormatDescriptionRef desc = NULL;
   status = CMVideoFormatDescriptionCreateForImageBuffer(NULL, depthData.depthDataMap, &desc);
@@ -304,7 +356,7 @@ inline void rgb2yuv(uint8_t r, uint8_t g, uint8_t b, uint8_t * y, uint8_t * u, u
   CMSampleTimingInfo timing;
   timing.duration = kCMTimeInvalid;
   timing.presentationTimeStamp = timestamp;
-  timing.decodeTimeStamp = kCMTimeInvalid;
+  timing.decodeTimeStamp = kCMTimeInvalid;  
 
   // Convert our depthData into a SampleBuffer
   CVImageBufferRef imageBuffer;
@@ -323,9 +375,6 @@ inline void rgb2yuv(uint8_t r, uint8_t g, uint8_t b, uint8_t * y, uint8_t * u, u
     RTCLogError(@"CVPixelBufferCreate failed: %d", status);
   }
 
-  // implement depth to RGB as per http://reality.cs.ucl.ac.uk/projects/depth-streaming/depth-streaming.pdf
-  // we also convert to 420p as that's what WebRTC insists on
-
   status = CVPixelBufferLockBaseAddress(depthData.depthDataMap, 0);
   if (status != noErr) {
     RTCLogError(@"CVPixelBufferLockBaseAddress failed: %d", status);
@@ -335,40 +384,38 @@ inline void rgb2yuv(uint8_t r, uint8_t g, uint8_t b, uint8_t * y, uint8_t * u, u
     RTCLogError(@"CVPixelBufferLockBaseAddress failed: %d", status);
   }
 
-  // periodicity constants as per the paper (end of sec 3)
-  double np = 512.0;
-  double w = 65536.0;
-  double p = np / w;
+  // uint16_t min = 65535;
+  // uint16_t max = 0;
 
   uint16_t * src = (uint16_t *) CVPixelBufferGetBaseAddress(depthData.depthDataMap);
   uint8_t * dstY = (uint8_t *) CVPixelBufferGetBaseAddressOfPlane(imageBuffer, 0);
   uint8_t * dstC = (uint8_t *) CVPixelBufferGetBaseAddressOfPlane(imageBuffer, 1);
-  for (size_t y = 0; y < dims.height; y++) {
-    for (size_t x = 0; x < dims.width; x++) {
-      // the paper describes three colour components: L, Ha and Hb, which we map to BGR.
-      // L is low-res depth data; H is high-res.
+  for (int y = 0; y < dims.height; y++) {
+    for (int x = 0; x < dims.width; x++) {
 
-      // FIXME: turn this into a lookup table
-      double L = (*src + 0.5) / w;
+      // if (y == 100) RTCLogInfo(@"%d, %d = %d", x, y, *src);
+      // if (*src < min) min = *src;
+      // if (*src > max) max = *src;
 
-      double Ha = fmod(L / (p / 2.0), 2.0);
-      if (Ha > 1) Ha = 2 - Ha;
-
-      double Hb = fmod((L - (p / 4.0)) / (p / 2.0), 2.0);
-      if (Hb > 1) Hb = 2 - Hb;
-
-      rgb2yuv(Ha * 255, Hb * 255, L * 255, dstY, dstC, dstC + 1);
+      *dstY = depthToY[*src];
+      *dstC = *dstC + depthToQuarterU[*src];
+      dstC++;      
+      *dstC = *dstC + depthToQuarterV[*src];
 
       src++;
       dstY++;
-      if (x & 1) {
-        dstC += 2; // only advance chroma every other X pixel
+      if ((x & 1) == 0) {
+        dstC++; // only advance chroma every other X pixel
+      } else {
+        dstC--;
       }
     }
-    if (y & 1) { // only advance chroma every other Y pixel
-      dstC -= dims.width * 2;
+    if ((y & 1) == 0) { // only advance chroma every other Y pixel
+      dstC -= dims.width;
     }
   }
+
+  // RTCLogInfo(@"Processed depth with min=%d, max=%d", min, max);
 
   status = CVPixelBufferUnlockBaseAddress(depthData.depthDataMap, 0);
   if (status != noErr) {
