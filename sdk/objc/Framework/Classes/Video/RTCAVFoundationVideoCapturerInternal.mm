@@ -97,8 +97,14 @@ inline void rgb2yuv(uint8_t r, uint8_t g, uint8_t b, uint8_t * y, uint8_t * u, u
     // rescale L in order to increase its dynamic range, as in practice the data
     // we get from the truedepth camera seems to only be between 10K and 20K, rather
     // than the 0K-65K range we're considering here...
-    L *= 4.0;
-    L -= 0.3;
+    // L *= 4.0;
+    // L -= 0.3;
+
+    L = 1.0 - (L*8.0); // increase contrast by 8x to make it easier to encode.
+    // for now, ditch the delta encoding as the YUV colourspace conversion seems
+    // to make it unusable.
+    Ha = L;
+    Hb = L; 
 
     rgb2yuv(Hb * 255, Ha * 255, L * 255, dstY, dstQuarterU, dstQuarterV);
 
@@ -333,6 +339,16 @@ inline void rgb2yuv(uint8_t r, uint8_t g, uint8_t b, uint8_t * y, uint8_t * u, u
 
 #pragma mark AVCaptureDepthDataOutputDelegate
 
+inline float half2float(uint16_t d) {
+  // stolen from https://stackoverflow.com/a/26779139/6764493
+  // XXX: doesn't handles subnormals, infinities and other edge cases
+  // but hopefully the truedepth camera doesn't hand us any... :S
+  uint32_t out = ((((uint32_t)d & 0x8000) << 16) | 
+                 ((((uint32_t)d & 0x7c00) + 0x1C000) << 13) | 
+                  (((uint32_t)d & 0x03FF) << 13) );
+  return *(float *)&out;
+}
+
 - (void)depthDataOutput:(AVCaptureDepthDataOutput *)depthDataOutput
      didOutputDepthData:(AVDepthData *)depthData
               timestamp:(CMTime)timestamp
@@ -404,11 +420,23 @@ inline void rgb2yuv(uint8_t r, uint8_t g, uint8_t b, uint8_t * y, uint8_t * u, u
       // if (y == 100) RTCLogInfo(@"%d, %d = %d", x, y, *src);
       // if (*src < min) min = *src;
       // if (*src > max) max = *src;
+      
+      // we don't cast the half to a uint16_t, as the dynamic range ends up massively
+      // compressed and we have no way to expand it out again on the rendering side
+      // (short of bit twiddling to do half->float in GLSL ES 3.0, which requires
+      // WebGL 2.0, which aframe doesn't easily support yet).
 
-      *dstY = depthToY[*src];
-      *dstC = *dstC + depthToQuarterU[*src];
+      // Let's assume we want to capture everything within 8 metres of the phone...
+      // but dumping everything further than 1m as background noise.  We don't just scale
+      // everything to fit in 1m as the banding gets too bad. Yes, this does deliberately
+      // reduce our encoded depth resolution.
+      size_t val = 65535 * (half2float(*src) / 8.0);
+      if (val > 65535/8) { val = 65535; }
+
+      *dstY = depthToY[val];
+      *dstC = *dstC + depthToQuarterU[val];
       dstC++;      
-      *dstC = *dstC + depthToQuarterV[*src];
+      *dstC = *dstC + depthToQuarterV[val];
 
       src++;
       dstY++;
