@@ -9,7 +9,7 @@
  */
 
 #import <Foundation/Foundation.h>
-
+#import <AVFoundation/AVFoundation.h>
 #import <WebRTC/RTCMacros.h>
 
 NS_ASSUME_NONNULL_BEGIN
@@ -52,6 +52,13 @@ RTC_EXPORT
 /** Initialize an RTCAVFoundationVideoSource with constraints. */
 - (RTCAVFoundationVideoSource *)avFoundationVideoSourceWithConstraints:
     (nullable RTCMediaConstraints *)constraints;
+
+/** Initialize an RTCAVFoundationVideoSource with constraints and a preexisting capturesession
+    and input device. */
+- (RTCAVFoundationVideoSource *)
+    avFoundationVideoSourceWithConstraints:(nullable RTCMediaConstraints *)constraints
+                            captureSession:(AVCaptureSession *)captureSession
+                        captureDeviceInput:(AVCaptureDeviceInput *)captureDeviceInput;
 
 /** Initialize a generic RTCVideoSource. The RTCVideoSource should be passed to a RTCVideoCapturer
  *  implementation, e.g. RTCCameraVideoCapturer, in order to produce frames.

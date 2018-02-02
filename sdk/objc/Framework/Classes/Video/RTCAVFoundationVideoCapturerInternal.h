@@ -38,6 +38,11 @@ NS_ASSUME_NONNULL_BEGIN
 // when we receive frames. This is safe because this object should be owned by
 // it.
 - (instancetype)initWithCapturer:(webrtc::AVFoundationVideoCapturer *)capturer;
+
+- (instancetype)initWithCapturer:(webrtc::AVFoundationVideoCapturer *)capturer
+                  captureSession:(AVCaptureSession *)captureSession
+              captureDeviceInput:(AVCaptureDeviceInput *)captureDeviceInput;
+
 - (AVCaptureDevice *)getActiveCaptureDevice;
 
 - (nullable AVCaptureDevice *)frontCaptureDevice;

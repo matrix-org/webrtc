@@ -118,6 +118,9 @@ class MediaConstraintsInterface {
   static const char kCpuOveruseDetection[];  // googCpuOveruseDetection
   static const char kPayloadPadding[];  // googPayloadPadding
 
+  // Matrix experiments
+  static const char kEnableMatrixDepth[]; // matrixDepth
+
   // The prefix of internal-only constraints whose JS set values should be
   // stripped by Chrome before passed down to Libjingle.
   static const char kInternalConstraintPrefix[];

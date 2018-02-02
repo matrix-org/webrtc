@@ -22,6 +22,12 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype)initWithFactory:(RTCPeerConnectionFactory *)factory
                     constraints:(nullable RTCMediaConstraints *)constraints;
 
+/** Initialize an RTCAVFoundationVideoSource with constraints and predefined capturesession & device input. */
+- (instancetype)initWithFactory:(RTCPeerConnectionFactory *)factory
+                    constraints:(nullable RTCMediaConstraints *)constraints
+                 captureSession:(nullable AVCaptureSession *)captureSession
+             captureDeviceInput:(nullable AVCaptureDeviceInput *)captureDeviceInput;
+
 @end
 
 NS_ASSUME_NONNULL_END

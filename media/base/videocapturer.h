@@ -151,6 +151,13 @@ class VideoCapturer : public sigslot::has_slots<>,
   // The fourcc component is ignored.
   void ConstrainSupportedFormats(const VideoFormat& max_format);
 
+  void set_enable_depth(bool enable_depth) {
+    enable_depth_ = enable_depth;
+  }
+  bool enable_depth() {
+    return enable_depth_;
+  }
+
   void set_enable_camera_list(bool enable_camera_list) {
     enable_camera_list_ = enable_camera_list;
   }
@@ -262,6 +269,7 @@ class VideoCapturer : public sigslot::has_slots<>,
   std::vector<VideoFormat> filtered_supported_formats_;
 
   bool enable_camera_list_;
+  bool enable_depth_;
   int scaled_width_;  // Current output size from ComputeScale.
   int scaled_height_;
 

@@ -209,6 +209,21 @@
 #endif
 }
 
+- (RTCAVFoundationVideoSource *)
+    avFoundationVideoSourceWithConstraints:(nullable RTCMediaConstraints *)constraints 
+                            captureSession:(AVCaptureSession *)captureSession
+                        captureDeviceInput:(AVCaptureDeviceInput *)captureDeviceInput
+{
+#ifdef HAVE_NO_MEDIA
+  return nil;
+#else
+  return [[RTCAVFoundationVideoSource alloc] initWithFactory:self
+                                                 constraints:constraints
+                                              captureSession:captureSession
+                                          captureDeviceInput:captureDeviceInput];
+#endif
+}
+
 - (RTCVideoSource *)videoSource {
   rtc::scoped_refptr<webrtc::ObjcVideoTrackSource> objcVideoTrackSource(
       new rtc::RefCountedObject<webrtc::ObjcVideoTrackSource>());

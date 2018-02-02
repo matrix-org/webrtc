@@ -34,6 +34,10 @@ class ObjcVideoTrackSource : public rtc::AdaptedVideoTrackSource {
     return rtc::Optional<bool>(false);
   }
 
+  rtc::Optional<bool> enable_depth() const override {
+    return rtc::Optional<bool>(false);
+  }
+
   SourceState state() const override { return SourceState::kLive; }
 
   bool remote() const override { return false; }

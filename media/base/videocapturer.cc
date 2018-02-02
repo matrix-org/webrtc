@@ -42,6 +42,7 @@ VideoCapturer::VideoCapturer() : apply_rotation_(false) {
 
 void VideoCapturer::Construct() {
   enable_camera_list_ = false;
+  enable_depth_ = false;
   capture_state_ = CS_STOPPED;
   scaled_width_ = 0;
   scaled_height_ = 0;

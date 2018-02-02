@@ -114,6 +114,18 @@ inline void rgb2yuv(uint8_t r, uint8_t g, uint8_t b, uint8_t * y, uint8_t * u, u
   }
 }
 
+
+- (instancetype)initWithCapturer:(webrtc::AVFoundationVideoCapturer *)capturer
+                  captureSession:(AVCaptureSession *)captureSession
+              captureDeviceInput:(AVCaptureDeviceInput *)captureDeviceInput {
+  
+  _captureSession = captureSession;
+  _frontCameraInput = captureDeviceInput;
+
+  return [self initWithCapturer:capturer];
+}
+
+
 // This is called from the thread that creates the video source, which is likely
 // the main thread.
 - (instancetype)initWithCapturer:(webrtc::AVFoundationVideoCapturer *)capturer {
@@ -606,50 +618,58 @@ inline float half2float(uint16_t d) {
 #pragma mark - Private
 
 - (BOOL)setupCaptureSession {
-  AVCaptureSession *captureSession = [[AVCaptureSession alloc] init];
+  AVCaptureSession *captureSession;
+  if (_captureSession) {
+    captureSession = _captureSession;
+  }
+  else {
+    captureSession = [[AVCaptureSession alloc] init];
+  }
 #if defined(WEBRTC_IOS)
   captureSession.usesApplicationAudioSession = NO;
 #endif
 
-/*
-  // XXX: for now, just capture depth.
-
-  // Add the output.
-  AVCaptureVideoDataOutput *videoDataOutput = [self getVideoDataOutput];
-  if (![captureSession canAddOutput:videoDataOutput]) {
-    RTCLogError(@"Video data output unsupported.");
-    return NO;
+  if (_capturer->enable_depth()) {
+    // Add the depth output.
+    AVCaptureDepthDataOutput *depthDataOutput = [self getDepthDataOutput];
+    if (![captureSession canAddOutput:depthDataOutput]) {
+      RTCLogError(@"Depth data output unsupported.");
+      return NO;
+    }
+    [captureSession addOutput:depthDataOutput];
   }
-  [captureSession addOutput:videoDataOutput];
-*/
-
-  // Add the depth output.
-  AVCaptureDepthDataOutput *depthDataOutput = [self getDepthDataOutput];
-  if (![captureSession canAddOutput:depthDataOutput]) {
-    RTCLogError(@"Depth data output unsupported.");
-    return NO;
-  }
-  [captureSession addOutput:depthDataOutput];
-
-  // Get the front and back cameras. If there isn't a front camera
-  // give up.
-  AVCaptureDeviceInput *frontCameraInput = [self frontCameraInput];
-  AVCaptureDeviceInput *backCameraInput = [self backCameraInput];
-  if (!frontCameraInput) {
-    RTCLogError(@"No front camera for capture session.");
-    return NO;
+  else {
+    // Add the output.
+    AVCaptureVideoDataOutput *videoDataOutput = [self getVideoDataOutput];
+    if (![captureSession canAddOutput:videoDataOutput]) {
+      RTCLogError(@"Video data output unsupported.");
+      return NO;
+    }
+    [captureSession addOutput:videoDataOutput];
   }
 
-  // Add the inputs.
-  if (![captureSession canAddInput:frontCameraInput] ||
-      (backCameraInput && ![captureSession canAddInput:backCameraInput])) {
-    RTCLogError(@"Session does not support capture inputs.");
-    return NO;
-  }
-  AVCaptureDeviceInput *input = self.useBackCamera ? backCameraInput : frontCameraInput;
-  [captureSession addInput:input];
+  if (!_frontCameraInput) {
+    // Get the front and back cameras. If there isn't a front camera
+    // give up.
+    AVCaptureDeviceInput *frontCameraInput = [self frontCameraInput];
+    AVCaptureDeviceInput *backCameraInput = [self backCameraInput];
+    if (!frontCameraInput) {
+      RTCLogError(@"No front camera for capture session.");
+      return NO;
+    }
 
-  _captureSession = captureSession;
+    // Add the inputs.
+    if (![captureSession canAddInput:frontCameraInput] ||
+        (backCameraInput && ![captureSession canAddInput:backCameraInput])) {
+      RTCLogError(@"Session does not support capture inputs.");
+      return NO;
+    }
+    AVCaptureDeviceInput *input = self.useBackCamera ? backCameraInput : frontCameraInput;
+    [captureSession addInput:input];
+
+    _captureSession = captureSession;
+  }
+
   return YES;
 }
 
@@ -736,14 +756,14 @@ inline float half2float(uint16_t d) {
     AVCaptureDevice *backCameraDevice =
         [self videoCaptureDeviceForPosition:AVCaptureDevicePositionBack];
     if (!backCameraDevice) {
-      RTCLogWarning(@"Failed to find front capture device.");
+      RTCLogWarning(@"Failed to find back capture device.");
       return nil;
     }
     NSError *error = nil;
     AVCaptureDeviceInput *backCameraInput =
         [AVCaptureDeviceInput deviceInputWithDevice:backCameraDevice error:&error];
     if (!backCameraInput) {
-      RTCLogError(@"Failed to create front camera input: %@", error.localizedDescription);
+      RTCLogError(@"Failed to create back camera input: %@", error.localizedDescription);
       return nil;
     }
     _backCameraInput = backCameraInput;

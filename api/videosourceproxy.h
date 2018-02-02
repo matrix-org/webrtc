@@ -26,6 +26,7 @@ BEGIN_PROXY_MAP(VideoTrackSource)
   PROXY_CONSTMETHOD0(bool, remote)
   PROXY_CONSTMETHOD0(bool, is_screencast)
   PROXY_CONSTMETHOD0(rtc::Optional<bool>, needs_denoising)
+  PROXY_CONSTMETHOD0(rtc::Optional<bool>, enable_depth)
   PROXY_METHOD1(bool, GetStats, Stats*)
   PROXY_WORKER_METHOD2(void,
                        AddOrUpdateSink,

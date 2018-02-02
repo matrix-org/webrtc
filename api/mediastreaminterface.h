@@ -140,6 +140,10 @@ class VideoTrackSourceInterface
   // the encoder.
   virtual rtc::Optional<bool> needs_denoising() const = 0;
 
+  // Indicates that the capturer should emit depth data rather than video.
+  // Experimental hack for Matrix; this should be a format option instead.
+  virtual rtc::Optional<bool> enable_depth() const = 0;
+
   // Returns false if no stats are available, e.g, for a remote source, or a
   // source which has not seen its first frame yet.
   //

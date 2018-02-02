@@ -155,6 +155,9 @@ bool NewFormatWithConstraints(
     // These are actually options, not constraints, so they can be satisfied
     // regardless of the format.
     return true;
+  } else if (constraint.key == MediaConstraintsInterface::kEnableMatrixDepth) {
+    // XXX: claim we can do it whatever for now
+    return true;
   }
   RTC_LOG(LS_WARNING) << "Found unknown MediaStream constraint. Name:"
                       << constraint.key << " Value:" << constraint.value;
@@ -349,6 +352,17 @@ void VideoCapturerTrackSource::Initialize(
                         << MediaConstraintsInterface::kNoiseReduction;
     SetState(kEnded);
     return;
+  }
+
+  if (!ExtractOption(constraints, MediaConstraintsInterface::kEnableMatrixDepth,
+                     &enable_depth_)) {
+    RTC_LOG(LS_WARNING) << "Invalid mandatory value for"
+                        << MediaConstraintsInterface::kEnableMatrixDepth;
+    SetState(kEnded);
+    return;
+  }
+  if (enable_depth_) {
+    video_capturer_->set_enable_depth(true);
   }
 
   format_ = GetBestCaptureFormat(formats);

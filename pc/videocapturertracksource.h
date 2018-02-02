@@ -49,6 +49,7 @@ class VideoCapturerTrackSource : public VideoTrackSource,
 
   bool is_screencast() const final { return video_capturer_->IsScreencast(); }
   rtc::Optional<bool> needs_denoising() const final { return needs_denoising_; }
+  rtc::Optional<bool> enable_depth() const final { return enable_depth_; }
 
   bool GetStats(Stats* stats) final;
 
@@ -72,6 +73,7 @@ class VideoCapturerTrackSource : public VideoTrackSource,
   bool started_;
   cricket::VideoFormat format_;
   rtc::Optional<bool> needs_denoising_;
+  rtc::Optional<bool> enable_depth_;
 };
 
 }  // namespace webrtc

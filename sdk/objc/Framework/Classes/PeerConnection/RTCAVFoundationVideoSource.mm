@@ -19,18 +19,33 @@
 }
 
 - (instancetype)initWithFactory:(RTCPeerConnectionFactory *)factory
-                    constraints:(RTCMediaConstraints *)constraints {
+                    constraints:(RTCMediaConstraints *)constraints
+                 captureSession:(AVCaptureSession *)captureSession
+             captureDeviceInput:(AVCaptureDeviceInput *)captureDeviceInput {
   NSParameterAssert(factory);
+
+  bool enable_depth = false;
+  webrtc::FindConstraint(constraints.nativeConstraints.get(),
+    webrtc::MediaConstraintsInterface::kEnableMatrixDepth, &enable_depth, 0);
+
   // We pass ownership of the capturer to the source, but since we own
   // the source, it should be ok to keep a raw pointer to the
   // capturer.
-  _capturer = new webrtc::AVFoundationVideoCapturer();
+  _capturer = new webrtc::AVFoundationVideoCapturer(enable_depth, captureSession, captureDeviceInput);
   rtc::scoped_refptr<webrtc::VideoTrackSourceInterface> source =
       factory.nativeFactory->CreateVideoSource(
           std::unique_ptr<cricket::VideoCapturer>(_capturer),
           constraints.nativeConstraints.get());
 
-  return [super initWithNativeVideoSource:source];
+  return [super initWithNativeVideoSource:source];              
+}
+
+- (instancetype)initWithFactory:(RTCPeerConnectionFactory *)factory
+                    constraints:(RTCMediaConstraints *)constraints {
+  return [self initWithFactory:factory
+                   constraints:constraints
+                captureSession:nil
+            captureDeviceInput:nil];
 }
 
 - (void)adaptOutputFormatToWidth:(int)width

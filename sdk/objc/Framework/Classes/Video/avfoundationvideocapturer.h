@@ -27,7 +27,7 @@ namespace webrtc {
 
 class AVFoundationVideoCapturer : public cricket::VideoCapturer {
  public:
-  AVFoundationVideoCapturer();
+  AVFoundationVideoCapturer(bool enable_depth, AVCaptureSession * captureSession, AVCaptureDeviceInput * captureDeviceInput);
   ~AVFoundationVideoCapturer();
 
   cricket::CaptureState Start(const cricket::VideoFormat& format) override;

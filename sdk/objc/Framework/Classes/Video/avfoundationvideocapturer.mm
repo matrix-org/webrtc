@@ -32,9 +32,20 @@ enum AVFoundationVideoCapturerMessageType : uint32_t {
   kMessageTypeFrame,
 };
 
-AVFoundationVideoCapturer::AVFoundationVideoCapturer() : _capturer(nil) {
-  _capturer =
-      [[RTCAVFoundationVideoCapturerInternal alloc] initWithCapturer:this];
+AVFoundationVideoCapturer::AVFoundationVideoCapturer(bool enable_depth,
+    AVCaptureSession * captureSession, AVCaptureDeviceInput * captureDeviceInput) : _capturer(nil) 
+{
+  this->set_enable_depth(enable_depth);
+
+  if (captureSession) {
+    _capturer =
+        [[RTCAVFoundationVideoCapturerInternal alloc] initWithCapturer:this
+          captureSession:captureSession captureDeviceInput:captureDeviceInput];
+  } 
+  else {
+    _capturer =
+        [[RTCAVFoundationVideoCapturerInternal alloc] initWithCapturer:this];
+  }
 
   std::set<cricket::VideoFormat> front_camera_video_formats =
       GetSupportedVideoFormatsForDevice([_capturer frontCaptureDevice]);

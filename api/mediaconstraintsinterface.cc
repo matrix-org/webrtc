@@ -153,6 +153,9 @@ const char MediaConstraintsInterface::kCpuOveruseDetection[] =
     "googCpuOveruseDetection";
 const char MediaConstraintsInterface::kPayloadPadding[] = "googPayloadPadding";
 
+// Matrix experiments
+const char MediaConstraintsInterface::kEnableMatrixDepth[] = "matrixDepth";
+
 
 // Set |value| to the value associated with the first appearance of |key|, or
 // return false if |key| is not found.
