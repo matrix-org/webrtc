@@ -1,0 +1,22 @@
+To create a cocoapod which can be linked locally:
+
+In the host application's Podfile:
+
+        pod 'WebRTC', :path => '/Users/matthew/workspace/webrtc/src/out_ios_libs/WebRTC.podspec'
+
+
+In WebRTC itself:
+    add a dummy version number to the podspec
+    add a dummy s.source param
+    symlink the podspec to be alongside WebRTC.framework in the build directory.
+    ln -s WebRTC.dSYM WebRTC.framework.dSYM # which is where cocoapods 1.4 expects to see it, to allow debugging
+    touch LICENSE
+
+
+---------------
+
+To build webrtc:
+
+https://webrtc.org/native-code/ios/
+
+./tools_webrtc/ios/build_ios_libs.py --build_config debug --arch arm64
